@@ -44,6 +44,24 @@ available.
 
 ## Building Images
 
+### Zone-mismatch reproduction branch
+
+`chengan/test-zone-mismatch` is test-only. Its `zone.Repository.ListZones`
+implementation bypasses ARM VM zone discovery and returns only
+`eastus2: [1,2,3,4,5]`, including on periodic refresh. Other regions have no
+discovered zones in this build. Public-IP creation still calls real ARM, and the
+public-IP zone-selection fix is deliberately not included.
+
+Use only a disposable eastus2 cluster where you control the active CCM and have
+confirmed that `Microsoft.Network/publicIPAddresses` supports zones 1,2,3,4 but
+rejects 5. Create a new external `LoadBalancer` Service without an existing or
+pre-created public IP. Expect `InvalidAvailabilityZone` and a pending Service.
+Existing public IPs do not exercise this path. Internal load-balancer frontends
+also consume the fake VM zone list, so this build must not be used in production.
+Remove the test Service and restore the normal CCM after the experiment.
+
+### Image build commands
+
 Before building images, ask the user for `IMAGE_REGISTRY` and `IMAGE_TAG`. For
 the reusable agent workflow, use `.agents/skills/build-images/`.
 

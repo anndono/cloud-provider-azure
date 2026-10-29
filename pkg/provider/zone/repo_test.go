@@ -18,10 +18,8 @@ package zone
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 
@@ -29,40 +27,43 @@ import (
 )
 
 func TestRepo_ListZones(t *testing.T) {
-	t.Run("return zones", func(t *testing.T) {
+	t.Run("return fake eastus2 zones without calling ARM", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
 		client := mock_providerclient.NewMockInterface(ctrl)
 		repo, err := NewRepo(client)
 		assert.NoError(t, err)
-
-		expectedZones := map[string][]*string{
-			"k1": {to.Ptr("zone1"), to.Ptr("zone2")},
-			"k2": {to.Ptr("zone3"), to.Ptr("zone4")},
-		}
-		client.EXPECT().GetVirtualMachineSupportedZones(gomock.Any()).Return(expectedZones, nil).Times(1)
+		client.EXPECT().GetVirtualMachineSupportedZones(gomock.Any()).Times(0)
 
 		zones, err := repo.ListZones(context.Background())
 		assert.NoError(t, err)
 		assert.Equal(t, map[string][]string{
-			"k1": {"zone1", "zone2"},
-			"k2": {"zone3", "zone4"},
+			"eastus2": {"1", "2", "3", "4", "5"},
 		}, zones)
 	})
 
-	t.Run("return error", func(t *testing.T) {
+	t.Run("refresh returns independent fake zones without calling ARM", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
 		client := mock_providerclient.NewMockInterface(ctrl)
 		repo, err := NewRepo(client)
 		assert.NoError(t, err)
+		client.EXPECT().GetVirtualMachineSupportedZones(gomock.Any()).Times(0)
 
-		expectedErr := fmt.Errorf("error")
-		client.EXPECT().GetVirtualMachineSupportedZones(gomock.Any()).Return(nil, expectedErr).Times(1)
+		zones, err := repo.ListZones(context.Background())
+		assert.NoError(t, err)
+		if !assert.Equal(t, []string{"1", "2", "3", "4", "5"}, zones["eastus2"]) {
+			t.FailNow()
+		}
+		zones["eastus2"][4] = "4"
+		delete(zones, "eastus2")
 
-		_, err = repo.ListZones(context.Background())
-		assert.ErrorIs(t, err, expectedErr)
+		refreshedZones, err := repo.ListZones(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, map[string][]string{
+			"eastus2": {"1", "2", "3", "4", "5"},
+		}, refreshedZones)
 	})
 }

@@ -23,7 +23,7 @@ import (
 	"context"
 
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/providerclient"
-	fnutil "sigs.k8s.io/cloud-provider-azure/pkg/util/collectionutil"
+	"sigs.k8s.io/cloud-provider-azure/pkg/log"
 )
 
 type Repository interface {
@@ -39,15 +39,13 @@ func NewRepo(client providerclient.Interface) (Repository, error) {
 }
 
 func (r *repo) ListZones(ctx context.Context) (map[string][]string, error) {
-	zones, err := r.client.GetVirtualMachineSupportedZones(ctx)
-	if err != nil {
-		return nil, err
+	// TEST ONLY: bypass Compute discovery to reproduce a public IP rejecting VM zone 5.
+	zones := map[string][]string{
+		"eastus2": {"1", "2", "3", "4", "5"},
 	}
+	log.FromContextOrBackground(ctx).WithName("ListZones").V(0).Info(
+		"TEST ONLY: Using fake VM zones without ARM discovery; do not deploy to production",
+		"region", "eastus2", "zones", zones["eastus2"])
 
-	var rv = make(map[string][]string, len(zones))
-	for region, z := range zones {
-		rv[region] = fnutil.Map(func(s *string) string { return *s }, z)
-	}
-
-	return rv, nil
+	return zones, nil
 }
