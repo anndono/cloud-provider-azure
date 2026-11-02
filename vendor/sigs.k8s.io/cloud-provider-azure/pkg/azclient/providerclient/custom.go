@@ -18,8 +18,8 @@ package providerclient
 
 import (
 	"context"
-	"strings"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	armresources "github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 )
 
@@ -43,20 +43,8 @@ func (client *Client) GetProvider(ctx context.Context, resourceProviderNamespace
 }
 
 func (client *Client) GetVirtualMachineSupportedZones(ctx context.Context) (map[string][]*string, error) {
-	result, err := client.GetProvider(ctx, "Microsoft.Compute")
-	if err != nil {
-		return nil, err
-	}
-	regionZoneMap := make(map[string][]*string)
-
-	for _, resourceType := range result.ResourceTypes {
-		if strings.EqualFold(*resourceType.ResourceType, "virtualMachines") {
-			for _, zoneMapping := range resourceType.ZoneMappings {
-				location := strings.ToLower(strings.ReplaceAll(*zoneMapping.Location, " ", ""))
-				regionZoneMap[location] = zoneMapping.Zones
-			}
-
-		}
-	}
-	return regionZoneMap, nil
+	// TEST ONLY: keep the invalid VM zone available without faking Network capabilities.
+	return map[string][]*string{
+		"eastus2": to.SliceOfPtrs("1", "2", "3", "4", "5"),
+	}, nil
 }

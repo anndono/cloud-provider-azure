@@ -46,19 +46,39 @@ available.
 
 ### Zone-mismatch reproduction branch
 
-`chengan/test-zone-mismatch` is test-only. Its `zone.Repository.ListZones`
-implementation bypasses ARM VM zone discovery and returns only
-`eastus2: [1,2,3,4,5]`, including on periodic refresh. Other regions have no
-discovered zones in this build. Public-IP creation still calls real ARM, and the
-public-IP zone-selection fix is deliberately not included.
+`chengan/test-zone-mismatch-11257` is test-only. It applies
+[kubernetes-sigs/cloud-provider-azure#11257](https://github.com/kubernetes-sigs/cloud-provider-azure/pull/11257)
+at commit `ab5167be5dd4023f374f20544b5d38b12753e0e9` while retaining fake VM zones
+`eastus2: [1,2,3,4,5]`. The injection has moved from `zone.Repository.ListZones`
+to `providerclient.Client.GetVirtualMachineSupportedZones`, so it does not
+override the PR's resource-specific Network discovery.
 
-Use only a disposable eastus2 cluster where you control the active CCM and have
-confirmed that `Microsoft.Network/publicIPAddresses` supports zones 1,2,3,4 but
-rejects 5. Create a new external `LoadBalancer` Service without an existing or
-pre-created public IP. Expect `InvalidAvailabilityZone` and a pending Service.
-Existing public IPs do not exercise this path. Internal load-balancer frontends
-also consume the fake VM zone list, so this build must not be used in production.
-Remove the test Service and restore the normal CCM after the experiment.
+The VM-specific helper is patched identically in `pkg/azclient/providerclient/`
+and `vendor/sigs.k8s.io/cloud-provider-azure/pkg/azclient/providerclient/`.
+The root CCM build uses the vendored copy; regenerating vendor will overwrite
+this test-only patch unless it is reapplied. `TestVMZoneInjection` verifies the
+root build's dependency still returns zone 5 without an ARM call. The fixed
+Network discovery must not call that helper, so the old fake-zone startup log
+is no longer expected. No Network provider response or resource PUT is faked.
+
+Use only a disposable eastus2 cluster where you control the active CCM. The
+previous custom 11224 image retained VM zone 5 for internal frontends and
+reproduced `SubscriptionDoesNotSupportZone` for a pending internal Service.
+Replace that CCM with a newly tagged image from this branch without deleting
+the pending Service. Public IPs should use real public-IP zone mappings.
+Internal frontends use real load-balancer zone mappings.
+
+The observed ARM response has public-IP zones 1,2,3,4 but
+`loadBalancers.zoneMappings: null`. Preserve that response: the PR will omit
+zones for a new internal frontend. Verify provisioning, the resulting frontend
+zones, and connectivity from inside the VNet separately. Success with unset
+zones demonstrates provisioning recovery, not guaranteed zone redundancy.
+Do not substitute public-IP or VM mappings for the missing load-balancer data.
+
+For a strict same-hook before/after comparison, use the same VM-helper patches
+in the pre-11257 build with its original VM-backed zone repository, then apply
+11257 without changing those helper patches. Restore the normal CCM and remove
+the test Service after the experiment.
 
 ### Image build commands
 

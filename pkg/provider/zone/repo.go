@@ -21,13 +21,17 @@ package zone
 
 import (
 	"context"
+	"strings"
+
+	"k8s.io/utils/ptr"
 
 	"sigs.k8s.io/cloud-provider-azure/pkg/azclient/providerclient"
-	"sigs.k8s.io/cloud-provider-azure/pkg/log"
+	"sigs.k8s.io/cloud-provider-azure/pkg/consts"
+	fnutil "sigs.k8s.io/cloud-provider-azure/pkg/util/collectionutil"
 )
 
 type Repository interface {
-	ListZones(ctx context.Context) (map[string][]string, error)
+	ListZones(ctx context.Context, resourceType string) (map[string][]string, error)
 }
 
 type repo struct {
@@ -38,14 +42,22 @@ func NewRepo(client providerclient.Interface) (Repository, error) {
 	return &repo{client: client}, nil
 }
 
-func (r *repo) ListZones(ctx context.Context) (map[string][]string, error) {
-	// TEST ONLY: bypass Compute discovery to reproduce a public IP rejecting VM zone 5.
-	zones := map[string][]string{
-		"eastus2": {"1", "2", "3", "4", "5"},
+func (r *repo) ListZones(ctx context.Context, resourceType string) (map[string][]string, error) {
+	provider, err := r.client.GetProvider(ctx, consts.NetworkProviderNamespace)
+	if err != nil {
+		return nil, err
 	}
-	log.FromContextOrBackground(ctx).WithName("ListZones").V(0).Info(
-		"TEST ONLY: Using fake VM zones without ARM discovery; do not deploy to production",
-		"region", "eastus2", "zones", zones["eastus2"])
 
-	return zones, nil
+	rv := make(map[string][]string)
+	for _, resource := range provider.ResourceTypes {
+		if !strings.EqualFold(ptr.Deref(resource.ResourceType, ""), resourceType) {
+			continue
+		}
+		for _, mapping := range resource.ZoneMappings {
+			region := strings.ToLower(strings.ReplaceAll(ptr.Deref(mapping.Location, ""), " ", ""))
+			rv[region] = fnutil.Map(func(s *string) string { return *s }, mapping.Zones)
+		}
+	}
+
+	return rv, nil
 }
